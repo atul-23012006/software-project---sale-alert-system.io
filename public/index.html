@@ -1,0 +1,288 @@
+<!--index.html-->
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sale Alert System — Home</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1724;
+    --card-grad: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    --muted:#9aa6bb;
+    --accent: #007bff;
+    --amazon: #ff8a00;
+    --flipkart: #0058A3;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    background:
+      radial-gradient(1000px 500px at 10% 10%, rgba(0,120,255,0.06), transparent),
+      radial-gradient(800px 400px at 90% 80%, rgba(255,160,0,0.03), transparent),
+      var(--bg);
+    color:#e6eef8;
+    -webkit-font-smoothing:antialiased;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:32px;
+  }
+
+  .shell {
+    width:100%;
+    max-width:960px;
+    display:grid;
+    grid-template-columns: 1fr 420px;
+    gap:32px;
+    align-items:start;
+  }
+  @media (max-width:980px){ .shell{grid-template-columns:1fr; padding:0 18px} }
+
+  .hero {
+    background:var(--card-grad);
+    border-radius:14px;
+    padding:28px;
+    box-shadow: 0 12px 40px rgba(2,6,23,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+    border:1px solid rgba(255,255,255,0.03);
+    backdrop-filter: blur(8px) saturate(120%);
+    min-height:320px;
+  }
+
+  .brand {
+    display:flex;
+    gap:14px;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  .brand .logo {
+    width:56px;height:56px;border-radius:12px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#0b1220,#111827);
+    box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+    border: 1px solid rgba(255,255,255,0.02);
+  }
+  .brand h1{margin:0;font-size:20px;font-weight:700;color:#fff}
+  .brand p{margin:0;color:var(--muted);font-size:13px}
+
+  form#trackerForm{
+    margin-top:16px;
+    display:grid;
+    gap:12px;
+  }
+
+  label{
+    display:block;
+    font-size:13px;
+    color:var(--muted);
+    font-weight:600;
+    margin-bottom:6px;
+  }
+
+  .row { display:flex; gap:12px; }
+  .row .col { flex:1; }
+
+  input, select {
+    width:100%;
+    padding:12px 12px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    color:#eaf3ff;
+    font-size:15px;
+    transition: box-shadow .14s ease, border-color .14s ease, transform .14s ease;
+  }
+  input:focus, select:focus{ outline:none; border-color:var(--accent); box-shadow:0 6px 20px rgba(0,123,255,0.08); transform:translateY(-2px) }
+
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+
+  .actions {
+    display:flex;
+    gap:12px;
+    margin-top:8px;
+    align-items:center;
+  }
+  .btn {
+    background:var(--accent);
+    padding:12px 16px;
+    border-radius:10px;
+    color:#fff;
+    font-weight:700;
+    border:none;
+    cursor:pointer;
+    box-shadow: 0 8px 18px rgba(2,6,23,0.45);
+    transition: transform .12s ease, filter .12s ease;
+  }
+  .btn:hover{ transform:translateY(-4px); filter:brightness(1.04) }
+
+  .btn.ghost{
+    background:transparent;
+    border:1px solid rgba(255,255,255,0.06);
+    color:#e6eef8;
+    font-weight:600;
+  }
+
+  .side {
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+
+  .card {
+    background:var(--card-grad);
+    border-radius:12px;
+    padding:16px;
+    border:1px solid rgba(255,255,255,0.03);
+    box-shadow: 0 10px 30px rgba(2,6,23,0.5);
+  }
+  .card h3 { margin:0 0 10px 0; color:#fff; font-size:15px }
+  .quick-list { list-style:none;margin:0;padding:0; display:flex; flex-direction:column; gap:10px }
+  .quick-list li { display:flex; gap:12px; align-items:center; background:rgba(255,255,255,0.02); padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.02) }
+  .chip { min-width:36px; height:36px; border-radius:8px; display:grid; place-items:center; font-weight:700; color:#fff }
+  .chip.amazon { background: linear-gradient(135deg,#FF8A00,#FFCF55) }
+  .chip.flipkart { background: linear-gradient(135deg,#0058A3,#00A6FF) }
+
+  .quick-list .meta { font-size:13px; color:var(--muted) }
+
+  .note {
+    font-size:13px;
+    color:var(--muted);
+    margin-top:6px;
+  }
+
+  .card, .hero { opacity:0; transform:translateY(10px); animation: dropIn .45s ease forwards }
+  .card { animation-delay:.06s } .hero { animation-delay:.02s }
+  @keyframes dropIn{ to{opacity:1; transform:none} }
+
+  a:focus, button:focus, input:focus { outline:3px solid rgba(0,123,255,0.12); outline-offset:3px }
+
+  @media (max-width:720px){
+    .shell { grid-template-columns:1fr; padding:18px 0 }
+    .side { order:2 }
+  }
+</style>
+</head>
+<body>
+  <h1 class="main-heading" style="display:none;">SALE ALERT SYSTEM</h1>
+
+  <main class="shell" role="main" aria-labelledby="siteTitle">
+    <section class="hero" aria-labelledby="siteTitle">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect width="24" height="24" rx="6" fill="#071025"/>
+            <path d="M6 9h12M6 13h12M6 17h12" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <h1 id="siteTitle">Sale Alert System</h1>
+          <p class="lead" style="margin:0;color:var(--muted)">Monitor prices on Amazon & Flipkart — get SMS alerts when price drops.</p>
+        </div>
+      </div>
+
+      <form id="trackerForm" novalidate>
+        <div>
+          <label for="productUrl">Product URL</label>
+          <input id="productUrl" type="url" inputmode="url" placeholder="Paste product or search URL (required)" required aria-required="true" />
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label for="targetPrice">Target Price</label>
+            <input id="targetPrice" type="number" min="0" step="0.01" placeholder="0.00" required aria-required="true" />
+          </div>
+          <div class="col">
+            <label for="currency">Currency</label>
+            <select id="currency" aria-label="Currency">
+              <option value="INR">INR (₹)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="phoneNumber">Phone Number</label>
+          <input id="phoneNumber" type="tel" inputmode="tel" placeholder="+911234567890" pattern="^\\+?[0-9\\s\\-()]{6,20}$" required aria-required="true" />
+          <div class="hint">Include country code e.g. +91...</div>
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="submit">Start Tracking</button>
+          <button class="btn ghost" id="viewHistory" type="button" onclick="location.href='/history.html'">View History</button>
+        </div>
+
+        <div class="note" id="feedback" aria-live="polite" style="margin-top:12px">You will receive an SMS when the price drops below your target.</div>
+      </form>
+    </section>
+
+    <aside class="side" aria-labelledby="quickActions">
+      <div class="card" role="region" aria-labelledby="quickActions">
+        <h3 id="quickActions">Quick actions</h3>
+        <ul class="quick-list">
+          <li><div class="chip amazon">A</div><div class="meta">Track Amazon product <br><small style="color:var(--muted)">paste product URL on the left</small></div></li>
+          <li><div class="chip flipkart">F</div><div class="meta">Track Flipkart product <br><small style="color:var(--muted)">or search query</small></div></li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Tips</h3>
+        <p class="note">✅ Use the <strong>direct product page</strong> — not a search results page — for more accurate tracking (product pages have consistent price elements).</p>
+        <p class="note">🧠 If a site uses heavy JavaScript to render prices, the system will automatically fall back to a browser-driven fetch (Selenium) so the price can still be read.</p>
+        <p style="margin-top:8px;"><a href="/history.html" style="color:var(--accent);text-decoration:underline">See tracked links →</a></p>
+      </div>
+    </aside>
+  </main>
+
+<script>
+  const form = document.getElementById('trackerForm');
+  const feedback = document.getElementById('feedback');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    feedback.textContent = 'Fetching price... please wait ⏳';
+
+    const productUrl = document.getElementById('productUrl').value.trim();
+    const targetPrice = document.getElementById('targetPrice').value.trim();
+    const phoneNumber = document.getElementById('phoneNumber').value.trim();
+    const currency = document.getElementById('currency').value;
+
+    if (!productUrl || !targetPrice || !phoneNumber) {
+      feedback.textContent = 'Please fill all required fields.';
+      return;
+    }
+
+    const payload = {
+      user_input: productUrl,
+      target_price: parseFloat(targetPrice),
+      phone_number: phoneNumber,
+      currency: currency
+    };
+
+    try {
+      const res = await fetch('/run-python', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (data.sent_sms) {
+        feedback.textContent = `✅ SMS Sent! Price: ₹${data.price}`;
+      } else {
+        feedback.textContent = `ℹ️ ${data.message}`;
+      }
+
+    } catch (err) {
+      feedback.textContent = '❌ Network or server error.';
+    }
+  });
+</script>
+</body>
+</html>
