@@ -19,9 +19,9 @@ const twilioClient = twilio(
 );
 
 const dbConfig = {
-  user: "sale_alert",
-  password: "atul123",
-  connectString: "localhost:1521/XEPDB1"
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  connectString: process.env.DB_CONNECT
 };
 
 
