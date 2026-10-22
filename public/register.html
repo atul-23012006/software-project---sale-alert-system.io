@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Create account — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="card auth-card" aria-labelledby="title">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 8h12M6 12h12M6 16h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+        <div>
+          <h1 id="title">Create your account</h1>
+          <p>Track prices on Amazon, Flipkart and more.</p>
+        </div>
+      </div>
+
+      <form id="registerForm" class="stack-form" novalidate>
+        <div>
+          <label for="name">Name</label>
+          <input id="name" type="text" autocomplete="name" maxlength="100" />
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required />
+        </div>
+        <div>
+          <label for="phone">Phone number <span class="muted">(optional, for SMS alerts)</span></label>
+          <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+919876543210" />
+          <div class="hint">Your 10-digit Indian mobile number, e.g. +919876543210</div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="new-password" minlength="8" required />
+          </div>
+          <div>
+            <label for="confirm">Confirm password</label>
+            <input id="confirm" type="password" autocomplete="new-password" required />
+          </div>
+        </div>
+        <div class="hint" style="margin-top:-6px">At least 8 characters.</div>
+        <div class="notice error" id="error" role="alert"></div>
+        <button class="btn block" type="submit" id="submitBtn">Create account</button>
+      </form>
+
+      <p class="auth-foot">Already have an account? <a href="/login.html">Log in</a></p>
+    </section>
+  </main>
+
+<script>
+  const form = document.getElementById('registerForm');
+  const errorEl = document.getElementById('error');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.textContent = '';
+    const body = {
+      name: document.getElementById('name').value.trim(),
+      email: document.getElementById('email').value.trim(),
+      phone_number: document.getElementById('phone').value.trim(),
+      password: document.getElementById('password').value,
+    };
+    const confirm = document.getElementById('confirm').value;
+
+    if (!body.email) return (errorEl.textContent = 'Enter your email.');
+    if (body.password.length < 8) return (errorEl.textContent = 'Password must be at least 8 characters.');
+    if (body.password !== confirm) return (errorEl.textContent = "Passwords don't match.");
+
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Registration failed');
+      location.href = '/index.html';
+    } catch (err) {
+      errorEl.textContent = err.message;
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

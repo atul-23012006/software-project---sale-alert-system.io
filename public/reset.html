@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="referrer" content="no-referrer" />
+<title>Choose a new password — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="card auth-card" aria-labelledby="title">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 8h12M6 12h12M6 16h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+        <div>
+          <h1 id="title">Choose a new password</h1>
+          <p>You'll be signed out on every device and can log in with the new one.</p>
+        </div>
+      </div>
+
+      <form id="resetForm" class="stack-form" novalidate>
+        <div>
+          <label for="password">New password</label>
+          <input id="password" type="password" autocomplete="new-password" minlength="8" required />
+          <div class="hint">At least 8 characters.</div>
+        </div>
+        <div>
+          <label for="confirm">Confirm new password</label>
+          <input id="confirm" type="password" autocomplete="new-password" required />
+        </div>
+        <div class="notice" id="feedback" role="status" aria-live="polite"></div>
+        <button class="btn block" type="submit" id="submitBtn">Set new password</button>
+      </form>
+
+      <p class="auth-foot"><a href="/forgot.html">Need a new link?</a> · <a href="/login.html">Log in</a></p>
+    </section>
+  </main>
+
+<script>
+  const token = new URLSearchParams(location.search).get('token');
+  // Keep the one-time token out of the address bar and browser history
+  history.replaceState(null, '', '/reset.html');
+
+  const form = document.getElementById('resetForm');
+  const feedback = document.getElementById('feedback');
+  const submitBtn = document.getElementById('submitBtn');
+
+  if (!token) {
+    feedback.className = 'notice error';
+    feedback.textContent = 'This page needs the link from your reset email. Ask for a new one.';
+    submitBtn.disabled = true;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    feedback.className = 'notice';
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm').value;
+    if (password.length < 8) {
+      feedback.classList.add('error');
+      feedback.textContent = 'Password must be at least 8 characters.';
+      return;
+    }
+    if (password !== confirm) {
+      feedback.classList.add('error');
+      feedback.textContent = "Passwords don't match.";
+      return;
+    }
+
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Reset failed');
+      feedback.classList.add('success');
+      feedback.innerHTML = 'Password changed. <a href="/login.html">Log in now →</a>';
+      form.querySelectorAll('input').forEach(i => (i.disabled = true));
+    } catch (err) {
+      feedback.classList.add('error');
+      feedback.textContent = err.message;
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

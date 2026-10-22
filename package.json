@@ -1,0 +1,27 @@
+{
+  "name": "software-project---sale-alert-system",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "migrate:sqlite": "node scripts/migrate-sqlite.js",
+    "reset-password": "node scripts/reset-password.js",
+    "change-email": "node scripts/change-email.js",
+    "check-email": "node scripts/check-email.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "nodemailer": "10.0.14",
+    "pg": "^8.23.1",
+    "twilio": "^5.13.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

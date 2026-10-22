@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Price history — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+  <main class="page">
+    <div class="page-head">
+      <div style="min-width:0;flex:1 1 420px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px" id="headPills"></div>
+        <h1 id="productName">Loading…</h1>
+        <p class="lead" id="productLead"></p>
+      </div>
+      <div class="actions">
+        <a class="btn ghost" id="storeLink" target="_blank" rel="noopener">Open in store ↗</a>
+        <button class="btn ghost" id="refreshBtn" type="button">Check price now</button>
+        <button class="btn danger" id="deleteBtn" type="button">Stop tracking</button>
+      </div>
+    </div>
+    <div class="notice" id="feedback" aria-live="polite" style="margin-bottom:16px"></div>
+
+    <section class="stats" id="stats" aria-label="Price summary"></section>
+
+    <section class="card" style="margin-top:20px" aria-labelledby="chartTitle">
+      <div class="card-head">
+        <h2 id="chartTitle">Price fluctuations</h2>
+        <span class="spacer"></span>
+        <span class="muted" style="font-size:13px" id="chartNote"></span>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="chart-box"><canvas id="chart" aria-label="Price over time" role="img"></canvas></div>
+    </section>
+
+    <div class="grid-2" style="margin-top:20px">
+      <div class="stack">
+        <section class="card" aria-labelledby="storesTitle">
+          <div class="card-head">
+            <h2 id="storesTitle">Other stores</h2>
+            <span class="spacer"></span>
+            <button class="btn ghost small" id="compareBtn" type="button">Check other stores now</button>
+          </div>
+          <div id="stores"></div>
+        </section>
+
+        <section class="card" aria-labelledby="historyTitle">
+          <div class="card-head"><h2 id="historyTitle">Price history</h2></div>
+          <div class="table-wrap" id="historyTable"></div>
+        </section>
+      </div>
+
+      <aside class="stack">
+        <section class="card" aria-labelledby="offerTitle">
+          <h2 id="offerTitle" style="margin-bottom:12px">Sale &amp; offers</h2>
+          <div id="offers"></div>
+        </section>
+
+        <section class="card" aria-labelledby="targetTitle">
+          <h2 id="targetTitle" style="margin-bottom:12px">Your target</h2>
+          <form id="targetForm" class="stack-form" novalidate>
+            <div>
+              <label for="target">Alert me at or below (₹)</label>
+              <input id="target" type="number" min="0" step="0.01" />
+            </div>
+            <button class="btn ghost small" type="submit">Update target</button>
+          </form>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+<script src="/js/common.js"></script>
+<script>
+const productId = new URLSearchParams(location.search).get('id');
+const feedback = document.getElementById('feedback');
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+let chart, pollTimer, data;
+
+function say(text, kind = '') {
+  feedback.className = `notice ${kind}`;
+  feedback.innerHTML = text;
+}
+
+// The palette is validated for three lines: the tracked store plus up to two other
+// stores, which get series 2 and 3 in a fixed store order so each keeps its colour.
+const STORE_ORDER = Object.keys(SITE_NAMES);
+function chartedStores(competitors) {
+  // Only stores selling the same product: a "similar" product's price isn't this product's price
+  const cheapest = competitors.filter(c => c.price && c.match_type !== 'similar').sort((a, b) => a.price - b.price).slice(0, 2).map(c => c.site);
+  cheapest.sort((a, b) => STORE_ORDER.indexOf(a) - STORE_ORDER.indexOf(b));
+  return Object.fromEntries(cheapest.map((s, i) => [s, cssVar(`--series-${i + 2}`)]));
+}
+
+
+function stat(label, value, sub = '') {
+  return `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+}
+
+function renderStats({ product: p, history, stale_days }) {
+  const cur = history.at(-1);
+  const prices = history.map(h => h.price);
+  const low = history.reduce((a, h) => (!a || h.price < a.price ? h : a), null);
+  const high = history.reduce((a, h) => (!a || h.price > a.price ? h : a), null);
+  const unchanged = cur ? daysSince(cur.observed_at) : null;
+  const first = history[0];
+  const c = p.currency;
+
+  let since = '';
+  if (cur && first && history.length > 1) {
+    const diff = cur.price - first.price;
+    since = diff < 0 ? `<span class="down">▼ ${money(-diff, c)}</span> since first seen`
+          : diff > 0 ? `<span class="up">▲ ${money(diff, c)}</span> since first seen` : 'Same as first seen';
+  }
+
+  document.getElementById('stats').innerHTML = [
+    stat('Current price', cur ? money(cur.price, c) : '—',
+      cur ? `${since || 'First recorded ' + formatDate(cur.observed_at, false)}` : 'No price read yet'),
+    stat('Lowest recorded', low ? money(low.price, c) : '—', low ? formatDate(low.observed_at, false) : ''),
+    stat('Highest recorded', high ? money(high.price, c) : '—', high ? formatDate(high.observed_at, false) : ''),
+    stat('Price changes', Math.max(prices.length - 1, 0), `tracked since ${formatDate(p.tracked_since, false)}`),
+    stat('Unchanged for', unchanged === null ? '—' : `${unchanged} day${unchanged === 1 ? '' : 's'}`,
+      unchanged !== null && unchanged >= stale_days
+        ? `<span style="color:var(--warn)">⏸️ No movement in ${stale_days}+ days</span>`
+        : `last checked ${timeAgo(p.last_checked_at)}`),
+  ].join('');
+}
+
+function renderOffers({ product: p, history }) {
+  const cur = history.at(-1);
+  const c = p.currency;
+  const rows = [];
+  const off = discountPct(cur?.price, p.original_price);
+  if (off) {
+    rows.push(`<div class="stat"><div class="label">Discount on MRP</div><div class="value" style="color:var(--good)">${off}% off</div>
+      <div class="sub">${money(cur.price, c)} <span class="strike">${money(p.original_price, c)}</span> · you save ${money(p.original_price - cur.price, c)}</div></div>`);
+  }
+  // Skip a bare "-71%" badge when the discount box above already says it
+  if (p.offer && !(off && /^-?\d+% ?(off)?$/i.test(p.offer))) rows.push(`<p style="margin:12px 0 0"><span class="tag sale">🔥 ${escapeHtml(p.offer)}</span></p>`);
+  if (cur && history.length > 1) {
+    const high = Math.max(...history.map(h => h.price));
+    const low = Math.min(...history.map(h => h.price));
+    if (cur.price === low) rows.push('<p class="hint">🎉 This is the <strong>lowest price</strong> we have recorded.</p>');
+    else if (high > cur.price) rows.push(`<p class="hint">${Math.round((1 - cur.price / high) * 100)}% below its highest recorded price; ${money(cur.price - low, c)} above its lowest.</p>`);
+  }
+  if (cur && cur.price <= p.target_price) rows.push(`<p class="hint" style="color:var(--good)">✓ At or below your target of ${money(p.target_price, c)}.</p>`);
+  document.getElementById('offers').innerHTML = rows.join('') ||
+    '<p class="hint" style="margin:0">No sale or discount is showing on the store page right now.</p>';
+}
+
+function renderHistory({ product: p, history }) {
+  const el = document.getElementById('historyTable');
+  if (!history.length) {
+    el.innerHTML = '<div class="empty">No price recorded yet.</div>';
+    return;
+  }
+  const rows = history.map((h, i) => {
+    const prev = history[i - 1];
+    let change = '<span class="muted">First seen</span>';
+    if (prev) {
+      const d = h.price - prev.price;
+      const pct = Math.abs(d / prev.price * 100).toFixed(1);
+      change = d < 0 ? `<span class="down">▼ ${money(-d, p.currency)} (${pct}%)</span>`
+                     : `<span class="up">▲ ${money(d, p.currency)} (${pct}%)</span>`;
+    }
+    const until = history[i + 1]?.observed_at || p.last_checked_at;
+    const lasted = until ? Math.max(daysSince(h.observed_at) - daysSince(until), 0) : null;
+    return `<tr>
+      <td>${formatDate(h.observed_at)}</td>
+      <td class="num price">${money(h.price, p.currency)}</td>
+      <td class="num">${change}</td>
+      <td class="num muted">${h.original_price ? money(h.original_price, p.currency) : '—'}</td>
+      <td class="num muted">${lasted === null ? '—' : `${lasted} d`}</td>
+    </tr>`;
+  }).reverse().join('');
+  el.innerHTML = `<table>
+    <thead><tr><th>Changed on</th><th class="num">Price</th><th class="num">Change</th><th class="num">MRP</th><th class="num">Held for</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <p class="hint">A new row is added only when the price changes. Last confirmed ${timeAgo(p.last_checked_at)}.</p>`;
+}
+
+// Why a store has no listing: "not sold there" and "the store wouldn't answer" are different things
+function missText(r) {
+  const store = siteName(r.site);
+  const note = r.note || '';
+  if (/refused/.test(note)) {
+    return `<span class="up">${escapeHtml(store)} refused the automated search this time</span>
+      <div class="hint" style="margin-top:2px">Stores limit automated requests, so this says nothing about whether they sell it. Try “Check other stores now” later.</div>`;
+  }
+  if (/couldn't be reached/.test(note)) return `<span class="up">${escapeHtml(store)} couldn't be reached — try again later</span>`;
+  if (/no results/.test(note)) return `<span class="muted">${escapeHtml(store)}'s search returned no results</span>`;
+  return '<span class="muted">Not found, and nothing similar either</span>';
+}
+
+function renderStores({ product: p, history, competitors, comparing }) {
+  const el = document.getElementById('stores');
+  const cur = history.at(-1);
+  const btn = document.getElementById('compareBtn');
+  btn.disabled = comparing;
+  btn.innerHTML = comparing ? '<span class="spinner"></span> Checking…' : 'Check other stores now';
+
+  const rows = [];
+  if (cur) {
+    rows.push({ site: p.site, title: 'Where you track it', url: p.url, price: cur.price, checked_at: p.last_checked_at, own: true });
+  }
+  // Same product first (cheapest first), then the closest similar products, then nothing found
+  const isSimilar = r => r.match_type === 'similar';
+  rows.push(...competitors.filter(c => c.price && !isSimilar(c)),
+            ...competitors.filter(c => c.price && isSimilar(c)),
+            ...competitors.filter(c => !c.price));
+  const found = rows.filter(r => r.price && !isSimilar(r));
+  const best = found.length ? Math.min(...found.map(r => r.price)) : null;
+
+  if (!competitors.length) {
+    el.innerHTML = comparing
+      ? '<div class="empty"><span class="spinner"></span> Searching Amazon.in, Snapdeal and ShopClues for this product…</div>'
+      : '<div class="empty">Other stores haven\'t been checked yet.</div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Store</th><th>Listing</th><th class="num">Price</th><th class="num">vs. yours</th></tr></thead>
+    <tbody>${rows.map(r => {
+      const similar = isSimilar(r);
+      const diff = r.price && cur && !r.own ? r.price - cur.price : null;
+      let vs = '';
+      if (diff !== null) {
+        vs = diff < 0 ? `${money(-diff, p.currency)} cheaper` : diff > 0 ? `${money(diff, p.currency)} more` : 'Same price';
+        // A different product's price difference is context, not a saving: keep it neutral
+        vs = similar ? `<span class="muted">${vs}</span>` : `<span class="${diff < 0 ? 'down' : diff > 0 ? 'up' : ''}">${vs}</span>`;
+      }
+      return `<tr class="${r.price && !similar && r.price === best ? 'best' : ''}">
+        <td>${sitePill(r.site)}</td>
+        <td>${similar ? `<span class="tag warn" style="margin-bottom:6px">≈ Similar product — this exact item wasn't found${r.match_score ? ` · ${Math.round(r.match_score * 100)}% match` : ''}</span><br>` : ''}
+          ${r.url && r.price ? `<a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.title || 'View listing')}</a>` : missText(r)}
+          <div class="hint" style="margin-top:2px">checked ${timeAgo(r.checked_at)}</div></td>
+        <td class="num price">${r.price ? money(r.price, p.currency) : '—'}</td>
+        <td class="num">${vs}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>
+    <p class="hint">Searched on Amazon.in, Snapdeal and ShopClues — the stores that allow an openly identified bot to search. Where a store doesn't sell this exact product, its closest similar product is shown instead (marked ≈); those are a different item, so they don't trigger alerts or appear on the graph. Matches are found by product name, so double-check the listing (colour, storage, model) before buying.</p>`;
+}
+
+function renderChart({ product: p, history, competitors, competitor_history }) {
+  const own = cssVar('--series-1');
+  const colors = chartedStores(competitors);
+  const ref = cssVar('--chart-ref');
+  const points = history.map(h => ({ x: new Date(h.observed_at), y: h.price }));
+  // Rows are only stored on change, so carry the latest price up to the last check
+  if (points.length && p.last_checked_at && new Date(p.last_checked_at) > points.at(-1).x) {
+    points.push({ x: new Date(p.last_checked_at), y: points.at(-1).y });
+  }
+
+  const datasets = [{
+    label: siteName(p.site), data: points, borderColor: own, backgroundColor: own,
+    stepped: 'before', borderWidth: 2, pointRadius: ctx => (ctx.dataIndex < history.length ? 4 : 0),
+    pointHoverRadius: 6, pointBorderColor: cssVar('--surface'), pointBorderWidth: 2,
+  }];
+
+  const bySite = {};
+  for (const r of competitor_history) (bySite[r.site] ||= []).push({ x: new Date(r.checked_at), y: r.price });
+  for (const [site, pts] of Object.entries(bySite)) {
+    const color = colors[site];
+    if (!color) continue;
+    datasets.push({
+      label: siteName(site), data: pts, borderColor: color, backgroundColor: color,
+      stepped: 'before', borderWidth: 2, pointRadius: 4, pointHoverRadius: 6,
+      pointBorderColor: cssVar('--surface'), pointBorderWidth: 2,
+    });
+  }
+
+  const xs = datasets.flatMap(d => d.data.map(pt => pt.x.getTime()));
+  if (xs.length) {
+    const span = [new Date(Math.min(...xs)), new Date(Math.max(...xs))];
+    datasets.push({
+      label: 'Your target', data: span.map(x => ({ x, y: p.target_price })), borderColor: ref,
+      borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 0,
+    });
+  }
+
+  document.getElementById('legend').innerHTML = datasets.map(d =>
+    `<span><i class="${d.borderDash ? 'dash' : ''}" style="background:${d.borderColor}"></i>${escapeHtml(d.label)}${d === datasets[0] ? ' (tracked)' : ''}</span>`).join('');
+  const others = competitors.filter(c => c.price).length - Object.keys(colors).length;
+  document.getElementById('chartNote').textContent = [
+    history.length ? `${history.length} recorded price${history.length === 1 ? '' : 's'}` : '',
+    others > 0 ? `${others} more store${others === 1 ? '' : 's'} in the table below` : '',
+  ].filter(Boolean).join(' · ');
+
+  const textMuted = cssVar('--muted');
+  const grid = cssVar('--chart-grid');
+  const config = {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          filter: item => item.dataset.label !== 'Your target',
+          callbacks: {
+            title: items => formatDate(items[0].parsed.x),
+            label: item => ` ${item.dataset.label}: ${money(item.parsed.y, p.currency)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time', time: { minUnit: 'hour', tooltipFormat: 'PP p' },
+          grid: { display: false }, border: { color: grid },
+          ticks: { color: textMuted, maxRotation: 0, autoSkipPadding: 24 },
+        },
+        y: {
+          grace: '10%', grid: { color: grid }, border: { display: false },
+          ticks: { color: textMuted, callback: v => money(v, p.currency).replace(/\.00$/, '') },
+        },
+      },
+    },
+  };
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), config);
+}
+
+function render(d) {
+  data = d;
+  const p = d.product;
+  document.title = `${p.name || 'Product'} — Sale Alert System`;
+  document.getElementById('productName').textContent = p.name || p.url;
+  document.getElementById('headPills').innerHTML = sitePill(p.site) +
+    (d.history.at(-1) && d.history.at(-1).price <= p.target_price ? '<span class="tag good">✓ Target reached</span>' : '');
+  document.getElementById('productLead').textContent = `Target ${money(p.target_price, p.currency)} · last checked ${timeAgo(p.last_checked_at)}`;
+  document.getElementById('storeLink').href = p.url.startsWith('http') ? p.url : '#';
+  document.getElementById('target').value = p.target_price;
+  renderStats(d);
+  renderOffers(d);
+  renderHistory(d);
+  renderStores(d);
+  renderChart(d);
+
+  // A comparison started elsewhere (e.g. right after adding the product) — check back for results
+  clearTimeout(pollTimer);
+  if (d.comparing) pollTimer = setTimeout(load, 5000);
+}
+
+async function load() {
+  try {
+    render(await api(`/api/products/${encodeURIComponent(productId)}`));
+  } catch (err) {
+    document.getElementById('productName').textContent = 'Product not found';
+    say(`${escapeHtml(err.message)}. <a href="/history.html">Back to dashboard</a>`, 'error');
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  say('<span class="spinner"></span> Checking the current price… this can take up to a minute.');
+  try {
+    const r = await api(`/api/products/${productId}/refresh`, { method: 'POST' });
+    say(r.success ? `Current price: ${money(r.price, data.product.currency)}.` : escapeHtml(r.message || "Couldn't read the price this time."),
+        r.success ? 'success' : 'error');
+    await load();
+  } catch (err) {
+    say(escapeHtml(err.message), 'error');
+  } finally {
+    e.target.disabled = false;
+  }
+});
+
+document.getElementById('compareBtn').addEventListener('click', async () => {
+  renderStores({ ...data, comparing: true });
+  try {
+    await api(`/api/products/${productId}/compare`, { method: 'POST' });
+    say('Other stores checked.', 'success');
+  } catch (err) {
+    say(escapeHtml(err.message), 'error');
+  }
+  await load();
+});
+
+document.getElementById('targetForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const target = parseFloat(document.getElementById('target').value);
+  try {
+    await api(`/api/products/${productId}`, { method: 'PATCH', body: { target_price: target } });
+    say(`Target updated to ${money(target, data.product.currency)}.`, 'success');
+    await load();
+  } catch (err) {
+    say(escapeHtml(err.message), 'error');
+  }
+});
+
+document.getElementById('deleteBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('deleteBtn');
+  // Two-step confirm instead of a blocking confirm() dialog
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = '1';
+    btn.textContent = 'Click again to confirm';
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = 'Stop tracking'; }, 4000);
+    return;
+  }
+  try {
+    await api(`/api/products/${productId}`, { method: 'DELETE' });
+    location.href = '/history.html';
+  } catch (err) {
+    say(escapeHtml(err.message), 'error');
+  }
+});
+
+initTopbar('dashboard');
+load();
+</script>
+</body>
+</html>

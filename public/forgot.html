@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Forgot password — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="card auth-card" aria-labelledby="title">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 8h12M6 12h12M6 16h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+        <div>
+          <h1 id="title">Forgot your password?</h1>
+          <p>Enter your account's email and we'll send you a link to choose a new one.</p>
+        </div>
+      </div>
+
+      <form id="forgotForm" class="stack-form" novalidate>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required />
+        </div>
+        <div class="notice" id="feedback" role="status" aria-live="polite"></div>
+        <button class="btn block" type="submit" id="submitBtn">Send reset link</button>
+      </form>
+
+      <p class="auth-foot">Remembered it? <a href="/login.html">Back to log in</a></p>
+    </section>
+  </main>
+
+<script>
+  const form = document.getElementById('forgotForm');
+  const feedback = document.getElementById('feedback');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    feedback.className = 'notice';
+    feedback.textContent = '';
+    const email = document.getElementById('email').value.trim();
+    if (!email) {
+      feedback.classList.add('error');
+      feedback.textContent = 'Enter your email.';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/forgot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      feedback.classList.add('success');
+      feedback.textContent = data.message;
+    } catch (err) {
+      feedback.classList.add('error');
+      feedback.textContent = err.message;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

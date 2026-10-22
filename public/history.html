@@ -1,0 +1,126 @@
+<!--history.html-->
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Dashboard — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="page">
+    <div class="page-head">
+      <div>
+        <h1 id="greeting">Your tracked products</h1>
+        <p class="lead">Current prices, recent changes, sale offers and the best price on other stores. Open a product for its full price graph.</p>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="refreshBtn" type="button">Refresh</button>
+        <a class="btn" href="/index.html">+ Track a product</a>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <section class="card" aria-labelledby="productsTitle">
+        <div class="card-head">
+          <h2 id="productsTitle">Products</h2>
+          <span class="muted" id="productCount" style="font-size:13px"></span>
+        </div>
+        <ul class="product-list" id="productList"><li class="empty">Loading…</li></ul>
+      </section>
+
+      <aside class="card" aria-labelledby="alertsTitle">
+        <div class="card-head">
+          <h2 id="alertsTitle">Notifications</h2>
+          <span class="spacer"></span>
+          <button class="btn ghost small" id="markReadBtn" type="button">Mark all read</button>
+        </div>
+        <ul class="alert-list" id="alertList"><li class="empty">Loading…</li></ul>
+      </aside>
+    </div>
+  </main>
+
+<script src="/js/common.js"></script>
+<script>
+const listEl = document.getElementById('productList');
+const alertListEl = document.getElementById('alertList');
+
+function productTags(p, staleDays) {
+  const tags = [sitePill(p.site)];
+
+  const off = discountPct(p.price, p.original_price);
+  if (off) tags.push(`<span class="tag sale">🔥 ${off}% off MRP</span>`);
+  else if (p.offer) tags.push(`<span class="tag sale">${escapeHtml(p.offer)}</span>`);
+
+  if (p.price && p.price <= p.target_price) tags.push('<span class="tag good">✓ Target reached</span>');
+
+  const unchanged = daysSince(p.price_since);
+  if (p.price && unchanged >= staleDays) {
+    tags.push(`<span class="tag warn" title="Price unchanged since ${formatDate(p.price_since, false)}">⏸️ No change in ${unchanged} days</span>`);
+  }
+
+  if (p.best_price && p.price && p.best_price < p.price) {
+    tags.push(`<span class="tag good">🏷️ ${money(p.best_price, p.currency)} on ${siteName(p.best_site)}</span>`);
+  }
+  return tags.join('');
+}
+
+function priceChange(p) {
+  if (!p.price || !p.previous_price) return '<span class="muted">No change yet</span>';
+  const diff = p.price - p.previous_price;
+  const pct = Math.abs(diff / p.previous_price * 100).toFixed(1);
+  return diff < 0
+    ? `<span class="down">▼ ${money(-diff, p.currency)} (${pct}%)</span>`
+    : `<span class="up">▲ ${money(diff, p.currency)} (${pct}%)</span>`;
+}
+
+function renderProducts({ products, stale_days }) {
+  document.getElementById('productCount').textContent =
+    products.length ? `${products.length} tracked` : '';
+  if (!products.length) {
+    listEl.innerHTML = '<li class="empty">You\'re not tracking anything yet. <a href="/index.html">Track your first product →</a></li>';
+    return;
+  }
+  listEl.innerHTML = products.map(p => `
+    <li>
+      <a class="product-item" href="/product.html?id=${p.product_id}">
+        <div>
+          <div class="title">${escapeHtml(p.name || p.url)}</div>
+          <div class="meta">${productTags(p, stale_days)}</div>
+        </div>
+        <div class="now">
+          <div class="price">${p.price ? money(p.price, p.currency) : '<span class="muted">No price yet</span>'}</div>
+          ${p.original_price ? `<div class="sub strike">${money(p.original_price, p.currency)}</div>` : ''}
+          <div class="sub">${priceChange(p)}</div>
+          <div class="sub">Target ${money(p.target_price, p.currency)} · checked ${timeAgo(p.last_checked_at)}</div>
+        </div>
+      </a>
+    </li>`).join('');
+}
+
+async function render() {
+  try {
+    const [products, alerts] = await Promise.all([api('/api/products'), api('/api/alerts')]);
+    renderProducts(products);
+    renderAlerts(alertListEl, alerts.alerts);
+  } catch (err) {
+    listEl.innerHTML = `<li class="empty">Could not load your products: ${escapeHtml(err.message)}</li>`;
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', render);
+document.getElementById('markReadBtn').addEventListener('click', async () => {
+  await api('/api/alerts/read', { method: 'POST' });
+  document.getElementById('unreadBadge').hidden = true;
+  render();
+});
+
+initTopbar('dashboard').then(({ user }) => {
+  if (user.name) document.getElementById('greeting').textContent = `Hi ${user.name.split(' ')[0]}, here are your products`;
+});
+render();
+</script>
+</body>
+</html>

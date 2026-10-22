@@ -1,0 +1,135 @@
+<!--index.html-->
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Track a product — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="page">
+    <div class="page-head">
+      <div>
+        <h1>Track a product</h1>
+        <p class="lead">Paste a product link from Amazon.in, Flipkart, Snapdeal, ShopClues, Reliance Digital, Tata CLiQ, JioMart or Vijay Sales. We'll record its price history, compare other stores and alert you when it drops.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <section class="card" aria-labelledby="formTitle">
+        <h2 id="formTitle" style="margin-bottom:14px">Product details</h2>
+        <form id="trackerForm" class="stack-form" novalidate>
+          <div>
+            <label for="productUrl">Product URL</label>
+            <input id="productUrl" type="text" inputmode="url" placeholder="https://www.amazon.in/dp/… (or a search like “flipkart boat airdopes”)" required />
+          </div>
+          <div>
+            <label for="targetPrice">Target price (₹)</label>
+            <input id="targetPrice" type="number" min="0" step="0.01" placeholder="0.00" required />
+            <div class="hint">You'll be alerted when the price is at or below this.</div>
+          </div>
+          <div class="actions" style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn" type="submit" id="submitBtn">Start tracking</button>
+            <a class="btn ghost" href="/history.html">Go to dashboard</a>
+          </div>
+          <div class="notice" id="feedback" aria-live="polite"></div>
+        </form>
+      </section>
+
+      <aside class="stack">
+        <section class="card" aria-labelledby="smsTitle">
+          <h3 id="smsTitle" style="margin-bottom:8px">SMS alerts</h3>
+          <p class="hint" id="smsStatus" style="margin-top:0">Loading…</p>
+          <form id="phoneForm" class="stack-form" novalidate>
+            <div>
+              <label for="phone">Phone number</label>
+              <input id="phone" type="tel" inputmode="tel" placeholder="+919876543210" />
+              <div class="hint">Your 10-digit Indian mobile number, e.g. +919876543210. Leave empty for in-app alerts only.</div>
+            </div>
+            <button class="btn ghost small" type="submit">Save number</button>
+            <div class="notice" id="phoneFeedback" aria-live="polite"></div>
+          </form>
+        </section>
+
+        <section class="card">
+          <h3 style="margin-bottom:8px">How it works</h3>
+          <p class="hint">📈 Prices are re-checked automatically every few hours; every change is kept in your price history and graph.</p>
+          <p class="hint">⏸️ If a price doesn't move for a while, we'll tell you — no point waiting for a sale that isn't coming.</p>
+          <p class="hint">🏷️ We search other stores for the same product and alert you if it's cheaper there.</p>
+          <p class="hint">✅ Use the <strong>product page</strong> URL rather than a search page for the most accurate tracking.</p>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+<script src="/js/common.js"></script>
+<script>
+  const form = document.getElementById('trackerForm');
+  const feedback = document.getElementById('feedback');
+  const submitBtn = document.getElementById('submitBtn');
+  const phoneInput = document.getElementById('phone');
+  const smsStatus = document.getElementById('smsStatus');
+
+  function showSmsStatus(user, smsEnabled) {
+    if (!smsEnabled) smsStatus.textContent = 'SMS sending is not configured on this server — alerts appear on your dashboard.';
+    else if (user.phone_number) smsStatus.textContent = `Alerts are texted to ${user.phone_number}.`;
+    else smsStatus.textContent = 'Add a phone number to also get alerts by SMS.';
+  }
+
+  let smsEnabled = false;
+  initTopbar('track').then(({ user, sms_enabled }) => {
+    smsEnabled = sms_enabled;
+    phoneInput.value = user.phone_number || '';
+    showSmsStatus(user, smsEnabled);
+  });
+
+  document.getElementById('phoneForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fb = document.getElementById('phoneFeedback');
+    fb.className = 'notice';
+    try {
+      const { user } = await api('/api/auth/me', { method: 'PATCH', body: { phone_number: phoneInput.value.trim() } });
+      phoneInput.value = user.phone_number || '';
+      showSmsStatus(user, smsEnabled);
+      fb.classList.add('success');
+      fb.textContent = 'Saved.';
+    } catch (err) {
+      fb.classList.add('error');
+      fb.textContent = err.message;
+    }
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    feedback.className = 'notice';
+
+    const productUrl = document.getElementById('productUrl').value.trim();
+    const targetPrice = parseFloat(document.getElementById('targetPrice').value);
+
+    if (!productUrl || !(targetPrice > 0)) {
+      feedback.classList.add('error');
+      feedback.textContent = 'Enter a product URL and a target price above 0.';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    feedback.innerHTML = '<span class="spinner"></span> Fetching the current price… this can take up to a minute.';
+
+    try {
+      const data = await api('/api/track', { method: 'POST', body: { user_input: productUrl, target_price: targetPrice } });
+      feedback.classList.add('success');
+      feedback.innerHTML = `${escapeHtml(data.message)} <a href="/product.html?id=${data.product_id}">View price history →</a>`;
+      form.reset();
+    } catch (err) {
+      feedback.classList.add('error');
+      feedback.textContent = err.message;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

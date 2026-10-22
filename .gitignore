@@ -1,0 +1,18 @@
+# Secrets: passwords, API keys, database URL
+.env
+.env.*
+
+# Installed dependencies
+node_modules/
+.venv/
+
+# Generated files
+__pycache__/
+*.pyc
+.DS_Store
+
+# Local data: the old SQLite database holds users' phone numbers
+database/*.db
+
+# Personal scratch file, may contain private input
+saved_input.txt

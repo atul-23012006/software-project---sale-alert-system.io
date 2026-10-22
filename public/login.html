@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Log in — Sale Alert System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="card auth-card" aria-labelledby="title">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 8h12M6 12h12M6 16h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+        <div>
+          <h1 id="title">Welcome back</h1>
+          <p>Log in to see your price graphs and alerts.</p>
+        </div>
+      </div>
+
+      <form id="loginForm" class="stack-form" novalidate>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required />
+          <div class="hint"><a href="/forgot.html">Forgot password?</a></div>
+        </div>
+        <div class="notice error" id="error" role="alert"></div>
+        <button class="btn block" type="submit" id="submitBtn">Log in</button>
+      </form>
+
+      <p class="auth-foot">New here? <a href="/register.html">Create an account</a></p>
+    </section>
+  </main>
+
+<script>
+  const form = document.getElementById('loginForm');
+  const errorEl = document.getElementById('error');
+  const submitBtn = document.getElementById('submitBtn');
+
+  // Only same-site paths, so ?next= can't bounce users to another website
+  function nextPage() {
+    const next = new URLSearchParams(location.search).get('next');
+    return next && next.startsWith('/') && !next.startsWith('//') ? next : '/history.html';
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.textContent = '';
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    if (!email || !password) {
+      errorEl.textContent = 'Enter your email and password.';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+      location.href = nextPage();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
