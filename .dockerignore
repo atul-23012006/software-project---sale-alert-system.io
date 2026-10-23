@@ -1,0 +1,10 @@
+.env
+.env.*
+.git
+.venv
+node_modules
+__pycache__
+*.pyc
+database/*.db
+saved_input.txt
+graphify-out
