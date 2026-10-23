@@ -18,4 +18,5 @@ RUN npm ci --omit=dev
 COPY . .
 
 ENV NODE_ENV=production
-CMD ["npm", "start"]
+# Render mounts Secret Files at /etc/secrets; expose a secret .env where dotenv looks for it
+CMD ["sh", "-c", "[ -f /etc/secrets/.env ] && ln -sf /etc/secrets/.env /app/.env; exec npm start"]
