@@ -9,6 +9,8 @@ const auth = require('./lib/auth');
 const { scrapeProduct, searchOtherStores } = require('./lib/scraper');
 const { dispatchAlerts, dispatchEmailAlerts, refreshDeliveryStatus, smsEnabled } = require('./lib/notify');
 const mailer = require('./lib/mailer');
+const rateLimit = require('./lib/rateLimit');
+const compression = require('compression');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,8 +21,15 @@ const COMPARE_EVERY_HOURS = Number(process.env.COMPARE_EVERY_HOURS) || 24;    //
 // an attacker could forge to make the reset link point at their own site.
 const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
 
-app.set('trust proxy', 'loopback'); // so req.secure is right behind a local TLS proxy
+// Behind Render's proxy, req.ip / req.secure only come out right if we trust its X-Forwarded-* headers
+app.set('trust proxy', process.env.TRUST_PROXY || (process.env.RENDER ? 1 : 'loopback'));
+app.use(compression());
 app.use(express.json());
+
+// Limits are per client IP (sign-in flows) or per user (the expensive scraping endpoints)
+const byUser = req => req.user?.user_id ?? req.ip;
+const limitAuth = (name, max, windowMs) => rateLimit({ name, max, windowMs, message: 'Too many attempts — please wait a while and try again' });
+const limitScrape = (name, max) => rateLimit({ name, max, windowMs: 10 * 60 * 1000, key: byUser, message: 'You are checking products too fast — please wait a few minutes' });
 
 // Express 5 forwards rejected promises from async handlers to this
 const api = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -37,7 +46,10 @@ app.get(PRIVATE_PAGES, api(auth.loadUser), (req, res, next) => {
 app.get(AUTH_PAGES, api(auth.loadUser), (req, res, next) =>
   req.user ? res.redirect('/history.html') : next());
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Assets get a short cache (revalidated by ETag afterwards); pages are never cached because they're sign-in guarded
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, file) => { if (/\.(css|js|png|jpe?g|svg|ico|woff2?)$/i.test(file)) res.set('Cache-Control', 'public, max-age=300'); },
+}));
 app.use('/api', api(auth.loadUser));
 
 
@@ -165,7 +177,7 @@ function compareProduct(productId) {
 
 // ---------- 🔐 AUTH ----------
 
-app.post('/api/auth/register', api(async (req, res) => {
+app.post('/api/auth/register', limitAuth('register', 10, 60 * 60 * 1000), api(async (req, res) => {
   const { name, email, password, phone_number } = req.body || {};
   const mail = typeof email === 'string' ? email.trim().toLowerCase() : '';
   const phone = normalizePhone(phone_number);
@@ -205,7 +217,7 @@ app.post('/api/auth/register', api(async (req, res) => {
   res.status(201).json({ user: { user_id: result.user_id, name: displayName, email: mail, phone_number: phone || null } });
 }));
 
-app.post('/api/auth/login', api(async (req, res) => {
+app.post('/api/auth/login', limitAuth('login', 30, 15 * 60 * 1000), api(async (req, res) => {
   const { email, password } = req.body || {};
   const mail = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (!mail || typeof password !== 'string') return res.status(400).json({ error: 'Email and password are required' });
@@ -226,7 +238,7 @@ app.post('/api/auth/login', api(async (req, res) => {
 // "Forgot password?": emails a one-time reset link to the registered address.
 // The reply is the same whether or not the email is registered, so the form can't be
 // used to find out who has an account.
-app.post('/api/auth/forgot', api(async (req, res) => {
+app.post('/api/auth/forgot', limitAuth('forgot', 5, 60 * 60 * 1000), api(async (req, res) => {
   const mail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   if (!EMAIL_RE.test(mail)) return res.status(400).json({ error: 'Enter a valid email address' });
   if (!mailer.mailEnabled) {
@@ -256,7 +268,7 @@ app.post('/api/auth/forgot', api(async (req, res) => {
   done();
 }));
 
-app.post('/api/auth/reset', api(async (req, res) => {
+app.post('/api/auth/reset', limitAuth('reset', 10, 60 * 60 * 1000), api(async (req, res) => {
   const { token, password } = req.body || {};
   if (typeof password !== 'string' || password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -296,7 +308,7 @@ app.patch('/api/auth/me', auth.requireUser, api(async (req, res) => {
 app.param('id', (req, res, next, id) =>
   /^\d{1,15}$/.test(id) ? next() : res.status(404).json({ error: 'Product not found' }));
 
-app.post('/api/track', auth.requireUser, api(async (req, res) => {
+app.post('/api/track', auth.requireUser, limitScrape('track', 15), api(async (req, res) => {
   const { user_input, target_price } = req.body || {};
   const target = Number(target_price);
   if (typeof user_input !== 'string' || !user_input.trim() || !Number.isFinite(target) || target <= 0) {
@@ -414,7 +426,7 @@ app.delete('/api/products/:id', auth.requireUser, api(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.post('/api/products/:id/refresh', auth.requireUser, api(async (req, res) => {
+app.post('/api/products/:id/refresh', auth.requireUser, limitScrape('refresh', 30), api(async (req, res) => {
   const product = await trackedProduct(req.user.user_id, req.params.id);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   const json = await refreshProduct(product);
@@ -423,7 +435,7 @@ app.post('/api/products/:id/refresh', auth.requireUser, api(async (req, res) => 
   res.json({ success: json.success, price: json.price, message: json.message });
 }));
 
-app.post('/api/products/:id/compare', auth.requireUser, api(async (req, res) => {
+app.post('/api/products/:id/compare', auth.requireUser, limitScrape('compare', 15), api(async (req, res) => {
   const product = await trackedProduct(req.user.user_id, req.params.id);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   const json = await compareProduct(product.product_id);
